@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2015-2021 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2015-2022 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -21,6 +21,7 @@
 
 #include <mali_kbase.h>
 #include <mali_kbase_defs.h>
+#include <device/mali_kbase_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/clk.h>
 #include <linux/clk-provider.h>
@@ -71,6 +72,7 @@ static void disable_gpu_power_control(struct kbase_device *kbdev)
 			WARN_ON(regulator_disable(kbdev->regulators[i]));
 	}
 #endif
+
 }
 
 static int pm_callback_power_on(struct kbase_device *kbdev)
@@ -79,8 +81,7 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 	int error;
 	unsigned long flags;
 
-	dev_dbg(kbdev->dev, "%s %p\n", __func__,
-			(void *)kbdev->dev->pm_domain);
+	dev_dbg(kbdev->dev, "%s %pK\n", __func__, (void *)kbdev->dev->pm_domain);
 
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 	WARN_ON(kbdev->pm.backend.gpu_powered);
@@ -96,9 +97,8 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 #else
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
-	enable_gpu_power_control(kbdev);
+#ifdef KBASE_PM_RUNTIME
 	error = pm_runtime_get_sync(kbdev->dev);
-
 	if (error == 1) {
 		/*
 		 * Let core know that the chip has not been
@@ -106,8 +106,11 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 		 */
 		ret = 0;
 	}
-
 	dev_dbg(kbdev->dev, "pm_runtime_get_sync returned %d\n", error);
+#else
+	enable_gpu_power_control(kbdev);
+#endif /* KBASE_PM_RUNTIME */
+
 #endif /* MALI_USE_CSF */
 
 	return ret;
@@ -123,7 +126,9 @@ static void pm_callback_power_off(struct kbase_device *kbdev)
 	WARN_ON(kbdev->pm.backend.gpu_powered);
 #if MALI_USE_CSF
 	if (likely(kbdev->csf.firmware_inited)) {
+#ifdef CONFIG_MALI_DEBUG
 		WARN_ON(kbase_csf_scheduler_get_nr_active_csgs(kbdev));
+#endif
 		WARN_ON(kbdev->pm.backend.mcu_state != KBASE_MCU_OFF);
 	}
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
@@ -200,7 +205,7 @@ static int kbase_device_runtime_init(struct kbase_device *kbdev)
 {
 	int ret = 0;
 
-	dev_dbg(kbdev->dev, "kbase_device_runtime_init\n");
+	dev_dbg(kbdev->dev, "%s\n", __func__);
 
 	pm_runtime_set_autosuspend_delay(kbdev->dev, AUTO_SUSPEND_DELAY);
 	pm_runtime_use_autosuspend(kbdev->dev);
@@ -223,7 +228,7 @@ static int kbase_device_runtime_init(struct kbase_device *kbdev)
 
 static void kbase_device_runtime_disable(struct kbase_device *kbdev)
 {
-	dev_dbg(kbdev->dev, "kbase_device_runtime_disable\n");
+	dev_dbg(kbdev->dev, "%s\n", __func__);
 
 	if (atomic_read(&kbdev->dev->power.usage_count))
 		dev_warn(kbdev->dev,
@@ -236,17 +241,21 @@ static void kbase_device_runtime_disable(struct kbase_device *kbdev)
 
 static int pm_callback_runtime_on(struct kbase_device *kbdev)
 {
-	dev_dbg(kbdev->dev, "pm_callback_runtime_on\n");
+	dev_dbg(kbdev->dev, "%s\n", __func__);
 
+#if !MALI_USE_CSF
 	enable_gpu_power_control(kbdev);
+#endif
 	return 0;
 }
 
 static void pm_callback_runtime_off(struct kbase_device *kbdev)
 {
-	dev_dbg(kbdev->dev, "pm_callback_runtime_off\n");
+	dev_dbg(kbdev->dev, "%s\n", __func__);
 
+#if !MALI_USE_CSF
 	disable_gpu_power_control(kbdev);
+#endif
 }
 
 static void pm_callback_resume(struct kbase_device *kbdev)
@@ -260,6 +269,7 @@ static void pm_callback_suspend(struct kbase_device *kbdev)
 {
 	pm_callback_runtime_off(kbdev);
 }
+
 
 struct kbase_pm_callback_conf pm_callbacks = {
 	.power_on_callback = pm_callback_power_on,
@@ -286,5 +296,3 @@ struct kbase_pm_callback_conf pm_callbacks = {
 	.power_runtime_gpu_active_callback = NULL,
 #endif
 };
-
-

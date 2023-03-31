@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2014-2021 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2022 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -28,9 +28,6 @@
 #include <mali_kbase_reset_gpu.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
 #include <backend/gpu/mali_kbase_js_internal.h>
-#if IS_ENABLED(CONFIG_MTK_GPU_DEBUG) || IS_ENABLED(CONFIG_MTK_GPU_DEBUG_DFD)
-#include <mtk_gpufreq.h>
-#endif
 
 #if !MALI_USE_CSF
 /*
@@ -94,7 +91,7 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 	struct kbase_device *kbdev;
 	struct kbasep_js_device_data *js_devdata;
 	struct kbase_backend_data *backend;
-	int s;
+	unsigned int s;
 	bool reset_needed = false;
 
 	KBASE_DEBUG_ASSERT(timer != NULL);
@@ -199,22 +196,11 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 					int ms =
 						js_devdata->scheduling_period_ns
 								/ 1000000u;
-#if IS_ENABLED(CONFIG_MTK_GPU_DEBUG)
-					mt_gpufreq_dump_infra_status();
-#endif
 					dev_warn(kbdev->dev, "JS: Job Hard-Stopped (took more than %lu ticks at %lu ms/tick)",
 							(unsigned long)ticks,
 							(unsigned long)ms);
 					kbase_job_slot_hardstop(atom->kctx, s,
 									atom);
-#if IS_ENABLED(CONFIG_MTK_GPU_DEBUG_DFD)
-					if (mt_gpufreq_is_dfd_force_dump() == 1 ||
-						mt_gpufreq_is_dfd_force_dump() == 2) {
-						pr_info("gpu dfd force dump\n");
-						mt_gpufreq_software_trigger_dfd();
-						BUG_ON(1);
-					}
-#endif
 #endif
 				} else if (ticks == gpu_reset_ticks) {
 					/* Job has been scheduled for at least
@@ -248,22 +234,11 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 					int ms =
 						js_devdata->scheduling_period_ns
 								/ 1000000u;
-#if IS_ENABLED(CONFIG_MTK_GPU_DEBUG)
-					mt_gpufreq_dump_infra_status();
-#endif
 					dev_warn(kbdev->dev, "JS: Job Hard-Stopped (took more than %lu ticks at %lu ms/tick)",
 							(unsigned long)ticks,
 							(unsigned long)ms);
 					kbase_job_slot_hardstop(atom->kctx, s,
 									atom);
-#if IS_ENABLED(CONFIG_MTK_GPU_DEBUG_DFD)
-					if (mt_gpufreq_is_dfd_force_dump() == 1 ||
-						mt_gpufreq_is_dfd_force_dump() == 2) {
-						pr_info("gpu dfd force dump\n");
-						mt_gpufreq_software_trigger_dfd();
-						BUG_ON(1);
-					}
-#endif
 #endif
 				} else if (ticks ==
 					js_devdata->gpu_reset_ticks_dumping) {
@@ -390,4 +365,3 @@ void kbase_backend_timeouts_changed(struct kbase_device *kbdev)
 
 	backend->timeouts_updated = true;
 }
-

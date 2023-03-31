@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 #
-# (C) COPYRIGHT 2012-2021 ARM Limited. All rights reserved.
+# (C) COPYRIGHT 2012-2022 ARM Limited. All rights reserved.
 #
 # This program is free software and is provided to you under the terms of the
 # GNU General Public License version 2 as published by the Free Software
@@ -59,10 +59,8 @@ ifeq ($(CONFIG_MALI_PRFCNT_SET_SELECT_VIA_DEBUG_FS), y)
 endif
 
 ifeq ($(CONFIG_MALI_FENCE_DEBUG), y)
-    ifneq ($(CONFIG_SYNC), y)
-        ifneq ($(CONFIG_SYNC_FILE), y)
-            $(error CONFIG_MALI_FENCE_DEBUG depends on CONFIG_SYNC || CONFIG_SYNC_FILE to be set in Kernel configuration)
-        endif
+    ifneq ($(CONFIG_SYNC_FILE), y)
+        $(error CONFIG_MALI_FENCE_DEBUG depends on CONFIG_SYNC_FILE to be set in Kernel configuration)
     endif
 endif
 
@@ -70,14 +68,8 @@ endif
 # Configurations
 #
 
-# *** MTK ***
-include $(src)/Kbuild-mtk-custom-env
-include $(src)/platform/mtk_platform_common/Kbuild
-ccflags-y += -I$(src)/include
-subdir-ccflags-y += -I$(src)/include
-
 # Driver version string which is returned to userspace via an ioctl
-MALI_RELEASE_NAME ?= '"r34p0-01eac0"'
+MALI_RELEASE_NAME ?= '"r42p0-01eac0"'
 # Set up defaults if not defined by build system
 ifeq ($(CONFIG_MALI_DEBUG), y)
     MALI_UNIT_TEST = 1
@@ -88,15 +80,8 @@ else
 endif
 MALI_COVERAGE ?= 0
 
-#CONFIG_MALI_PLATFORM_NAME ?= "devicetree"
-# *** MTK ***
-CONFIG_MALI_PLATFORM_NAME ?= $(CONFIG_MALI_PLATFORM_THIRDPARTY_NAME)
 # Kconfig passes in the name with quotes for in-tree builds - remove them.
 MALI_PLATFORM_DIR := $(shell echo $(CONFIG_MALI_PLATFORM_NAME))
-ifeq ($(CONFIG_MTK_TRUSTED_MEMORY_SUBSYSTEM), y)
-    include $(srctree)/drivers/misc/mediatek/trusted_mem/Makefile.include
-    ccflags-y += -I$(srctree)/drivers/staging/android/ion
-endif
 
 ifeq ($(CONFIG_MALI_CSF_SUPPORT),y)
     MALI_JIT_PRESSURE_LIMIT_BASE = 0
@@ -119,12 +104,12 @@ endif
 #
 # Experimental features must default to disabled, e.g.:
 # MALI_EXPERIMENTAL_FEATURE ?= 0
-MALI_INCREMENTAL_RENDERING ?= 0
+MALI_INCREMENTAL_RENDERING_JM ?= 0
 
 #
 # ccflags
 #
-ccflags-y += \
+ccflags-y = \
     -DMALI_CUSTOMER_RELEASE=$(MALI_CUSTOMER_RELEASE) \
     -DMALI_USE_CSF=$(MALI_USE_CSF) \
     -DMALI_KERNEL_TEST_API=$(MALI_KERNEL_TEST_API) \
@@ -132,8 +117,7 @@ ccflags-y += \
     -DMALI_COVERAGE=$(MALI_COVERAGE) \
     -DMALI_RELEASE_NAME=$(MALI_RELEASE_NAME) \
     -DMALI_JIT_PRESSURE_LIMIT_BASE=$(MALI_JIT_PRESSURE_LIMIT_BASE) \
-    -DMALI_INCREMENTAL_RENDERING=$(MALI_INCREMENTAL_RENDERING) \
-    -DMALI_KBASE_BUILD \
+    -DMALI_INCREMENTAL_RENDERING_JM=$(MALI_INCREMENTAL_RENDERING_JM) \
     -DMALI_PLATFORM_DIR=$(MALI_PLATFORM_DIR)
 
 
@@ -159,13 +143,14 @@ subdir-ccflags-y += $(ccflags-y)
 # Kernel Modules
 #
 obj-$(CONFIG_MALI_MIDGARD) += mali_kbase.o
-obj-$(CONFIG_MALI_ARBITRATION) += arbitration/
+obj-$(CONFIG_MALI_ARBITRATION) += ../arbitration/
 obj-$(CONFIG_MALI_KUTF)    += tests/
 
 mali_kbase-y := \
     mali_kbase_cache_policy.o \
     mali_kbase_ccswe.o \
     mali_kbase_mem.o \
+    mali_kbase_mem_migrate.o \
     mali_kbase_mem_pool_group.o \
     mali_kbase_native_mgm.o \
     mali_kbase_ctx_sched.o \
@@ -174,12 +159,6 @@ mali_kbase-y := \
     mali_kbase_config.o \
     mali_kbase_kinstr_prfcnt.o \
     mali_kbase_vinstr.o \
-    mali_kbase_hwcnt.o \
-    mali_kbase_hwcnt_gpu.o \
-    mali_kbase_hwcnt_gpu_narrow.o \
-    mali_kbase_hwcnt_legacy.o \
-    mali_kbase_hwcnt_types.o \
-    mali_kbase_hwcnt_virtualizer.o \
     mali_kbase_softjobs.o \
     mali_kbase_hw.o \
     mali_kbase_debug.o \
@@ -188,8 +167,9 @@ mali_kbase-y := \
     mali_kbase_core_linux.o \
     mali_kbase_mem_profile_debugfs.o \
     mali_kbase_disjoint_events.o \
-    mali_kbase_gator_api.o \
     mali_kbase_debug_mem_view.o \
+    mali_kbase_debug_mem_zones.o \
+    mali_kbase_debug_mem_allocs.o \
     mali_kbase_smc.o \
     mali_kbase_mem_pool.o \
     mali_kbase_mem_pool_debugfs.o \
@@ -206,23 +186,14 @@ mali_kbase-$(CONFIG_DEBUG_FS) += mali_kbase_pbha_debugfs.o
 
 mali_kbase-$(CONFIG_MALI_CINSTR_GWT) += mali_kbase_gwt.o
 
-mali_kbase-$(CONFIG_SYNC) += \
-    mali_kbase_sync_android.o \
-    mali_kbase_sync_common.o
-
 mali_kbase-$(CONFIG_SYNC_FILE) += \
     mali_kbase_fence_ops.o \
     mali_kbase_sync_file.o \
     mali_kbase_sync_common.o
 
-ifeq ($(CONFIG_MALI_CSF_SUPPORT),y)
-    mali_kbase-y += \
-        mali_kbase_hwcnt_backend_csf.o \
-        mali_kbase_hwcnt_backend_csf_if_fw.o
-else
+ifneq ($(CONFIG_MALI_CSF_SUPPORT),y)
     mali_kbase-y += \
         mali_kbase_jm.o \
-        mali_kbase_hwcnt_backend_jm.o \
         mali_kbase_dummy_job_wa.o \
         mali_kbase_debug_job_fault.o \
         mali_kbase_event.o \
@@ -231,11 +202,6 @@ else
         mali_kbase_js.o \
         mali_kbase_js_ctx_attr.o \
         mali_kbase_kinstr_jm.o
-
-    mali_kbase-$(CONFIG_MALI_DMA_FENCE) += \
-        mali_kbase_fence_ops.o \
-        mali_kbase_dma_fence.o \
-        mali_kbase_fence.o
 
     mali_kbase-$(CONFIG_SYNC_FILE) += \
         mali_kbase_fence_ops.o \
@@ -250,6 +216,7 @@ INCLUDE_SUBDIR = \
     $(src)/backend/gpu/Kbuild \
     $(src)/mmu/Kbuild \
     $(src)/tl/Kbuild \
+    $(src)/hwcnt/Kbuild \
     $(src)/gpu/Kbuild \
     $(src)/thirdparty/Kbuild \
     $(src)/platform/$(MALI_PLATFORM_DIR)/Kbuild
